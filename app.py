@@ -3,7 +3,7 @@ import requests
 import urllib.parse
 import time
 from sentence_transformers import SentenceTransformer, util
-
+#code to load the model and cache it for faster performance
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="FactSarkar",
