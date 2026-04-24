@@ -3,7 +3,7 @@ import requests
 import urllib.parse
 import time
 from sentence_transformers import SentenceTransformer, util
-#code to load the model and cache it for faster performance
+
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="FactSarkar",
@@ -130,6 +130,7 @@ def check_fake_news(query, api_key):
     except requests.exceptions.RequestException as e:
         return f"Service currently unavailable. (Error: {e})"
 
+
 # --- HELPER UI FUNCTIONS ---
 def get_rating_color(rating):
     rating_lower = rating.lower()
@@ -147,12 +148,38 @@ def get_similarity_color(score):
     return "#d32f2f" # Deep red
 
 # --- APP LAYOUT ---
-st.title("FactSarkar")
-st.markdown("Verify news, articles, and public claims against global fact-checking databases. FactSarkar utilizes semantic AI to match the context of your query with verified reports.")
+from googletrans import Translator
+@st.cache_resource
+def load_translator():
+    return Translator()
 
-# Safely get API key
+translator = load_translator()
+
+# Language Selection
+language = st.selectbox(
+    "Select Language",
+    ["English", "Hindi", "Marathi", "French", "German", "Spanish", "Chinese", "Japanese"]
+)
+
+# Translation Function
+def translate_text(text, lang):
+    try:
+        return translator.translate(text, dest=lang).text
+    except:
+        return text
+
+# UI Title and Description
+translated_title = translate_text("FactSarkar", language)
+st.title(translated_title)
+
+st.markdown(translate_text(
+    "Verify news, articles, and public claims against global fact-checking databases.",
+    language
+))
+
+# API Key
 try:
-    API_KEY = st.secrets["API_KEY"]
+    API_KEY = st.secrets["GOOGLE_FACT_CHECK_API_KEY"]
 except KeyError:
     st.error("API key not found. Please set your API key in Streamlit secrets.")
     st.stop()
@@ -160,82 +187,92 @@ except KeyError:
 # User Input
 with st.form("fact_check_form"):
     user_input = st.text_area(
-        "Enter the claim or news excerpt to verify:", 
-        height=120, 
-        placeholder="Enter the statement here..."
+        translate_text("Enter the claim or news excerpt to verify:", language),
+        height=120,
+        placeholder=translate_text("Enter the statement here...", language)
     )
-    submit_button = st.form_submit_button("Verify Claim", use_container_width=True)
+    submit_button = st.form_submit_button(
+        translate_text("Verify Claim", language),
+        use_container_width=True
+    )
 
+# Sidebar
 with st.sidebar:
-    st.header("Search History")
+    st.header(translate_text("Search History", language))
     
-    # 1. Show the Clear History button right below the heading
     if st.session_state.history:
-        if st.button("Clear History", use_container_width=True):
+        if st.button(translate_text("Clear History", language), use_container_width=True):
             st.session_state.history = []
-            st.rerun() # Instantly refreshes the app
+            st.rerun()
             
     st.divider()
 
-    # 2. Display the history list just once
     if not st.session_state.history:
-        st.write("No previous searches.")
+        st.write(translate_text("No previous searches.", language))
     else:
         for past_query in reversed(st.session_state.history):
-            st.caption(f" {past_query}")
+            st.caption(past_query)
 
-# Processing and Results
+# Processing
 if submit_button:
     if not user_input.strip():
-        st.warning("Please enter some text before submitting.")
+        st.warning(translate_text("Please enter some text before submitting.", language))
     else:
-        # --- NEW: Save to history if it's not a duplicate ---
         if user_input not in st.session_state.history:
             st.session_state.history.append(user_input)
 
-        with st.spinner("Querying databases and analyzing semantics..."):
-            time.sleep(0.5) 
-            results = check_fake_news(user_input, API_KEY)
+        # Translate input to English
+        translated_query = translate_text(user_input, "en")
+
+        with st.spinner(translate_text("Analyzing claim...", language)):
+            results = check_fake_news(translated_query, API_KEY)
 
         if isinstance(results, str):
-            st.info(results)
+            st.info(translate_text(results, language))
         else:
-            # Calculate Semantic Similarity
-            query_embedding = similarity_model.encode(user_input, convert_to_tensor=True)
-            
+            query_embedding = similarity_model.encode(translated_query, convert_to_tensor=True)
+
             for res in results:
                 claim_embedding = similarity_model.encode(res['claim'], convert_to_tensor=True)
                 cosine_score = util.cos_sim(query_embedding, claim_embedding).item()
                 res['similarity_score'] = max(0, min(100, int(cosine_score * 100)))
 
-            # Sort results by similarity descending
             results = sorted(results, key=lambda x: x['similarity_score'], reverse=True)
 
-            st.success(f"Found {len(results)} verified record(s).")
+            st.success(translate_text(f"Found {len(results)} verified record(s).", language))
             st.divider()
-            
-            # Display Results
+
             for res in results:
                 rating_color = get_rating_color(res['rating'])
                 sim_color = get_similarity_color(res['similarity_score'] / 100)
-                
+
+                # Translate output to selected language
+                claim = translate_text(res['claim'], language)
+                claimant = translate_text(res['made_by'], language)
+                checker = translate_text(res['fact_checker'], language)
+                rating = translate_text(res['rating'], language)
+
                 card_html = f"""
                 <div class="result-card">
                     <span class="similarity-badge" style="background-color: {sim_color};">
-                        Match Confidence: {res['similarity_score']}%
+                        {translate_text("Match Confidence", language)}: {res['similarity_score']}%
                     </span>
-                    <div class="claim-text">Claim: {res['claim']}</div>
-                    <div class="meta-data"><b>Claimant:</b> {res['made_by']}</div>
-                    <div class="meta-data"><b>Verified By:</b> {res['fact_checker']}</div>
+                    <div class="claim-text">{translate_text("Claim", language)}: {claim}</div>
+                    <div class="meta-data"><b>{translate_text("Claimant", language)}:</b> {claimant}</div>
+                    <div class="meta-data"><b>{translate_text("Verified By", language)}:</b> {checker}</div>
                 </div>
                 """
                 st.markdown(card_html, unsafe_allow_html=True)
-                
+
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    st.markdown(f"**Final Assessment:** :{rating_color}[{res['rating']}]")
+                    st.markdown(f"**{translate_text('Final Assessment', language)}:** :{rating_color}[{rating}]")
                 with col2:
                     if res['source_link'] != '#':
-                        st.link_button("Read Full Report", res['source_link'], use_container_width=True)
-                
+                        st.link_button(
+                            translate_text("Read Full Report", language),
+                            res['source_link'],
+                            use_container_width=True
+                        )
+
                 st.write("")
