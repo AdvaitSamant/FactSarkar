@@ -12,6 +12,7 @@ from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
 from reportlab.lib.enums import TA_CENTER
+import textwrap
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -224,6 +225,21 @@ html,body,[data-testid="stAppViewContainer"]{
   border:1.5px solid var(--b300)!important;
   font-family:'Source Serif 4',serif!important;
   font-size:.86rem!important;border-radius:9px!important;
+}
+/* Tertiary (Ghost) Buttons */
+[data-testid="baseButton-tertiary"]{
+  background:transparent!important;
+  color:var(--b600)!important;
+  font-family:'Source Serif 4',serif!important;
+  font-size:.9rem!important;font-weight:600!important;
+  border:none!important;
+  padding:0!important;
+  transition:color .2s!important;
+}
+[data-testid="baseButton-tertiary"]:hover{
+  color:var(--b800)!important;
+  background:transparent!important;
+  text-decoration:underline;
 }
 
 /* ── INPUTS ── */
@@ -573,7 +589,9 @@ def landing(lang):
     with col_btn:
         st.markdown("<div style='padding-top:6px;'></div>", unsafe_allow_html=True)
         dive_label = T("Hide details", lang) if st.session_state.show_deep_dive else T("In-depth guide", lang)
-        if st.button(dive_label, key="deep_btn"):
+        
+        # Add type="tertiary" here
+        if st.button(dive_label, key="deep_btn", type="tertiary"):
             st.session_state.show_deep_dive = not st.session_state.show_deep_dive
             st.rerun()
 
@@ -591,53 +609,35 @@ def landing(lang):
     )
 
     if st.session_state.show_deep_dive:
-        st.markdown("""
-        <div class="deep-panel">
-            <h4>What is FactScope?</h4>
-            <p>FactScope is an AI-assisted fact-verification tool that cross-references user-submitted claims
-            against the <strong>Google Fact Check Tools API</strong> — a curated index of fact-check articles
-            published by professional organisations worldwide: PolitiFact, Snopes, AFP Fact Check,
-            BBC Reality Check, Vishvas News, and hundreds more.</p>
-
-            <h4>Step 1 — Input &amp; Translation</h4>
-            <p>You type a claim, headline, or any piece of text. For non-English languages, FactScope uses
-            <span class="mono-tag">deep-translator</span> (backed by Google Translate) to convert your input
-            to English before querying the database — then translates all results back into your chosen language.
-            All translations are cached with <span class="mono-tag">@st.cache_data</span> so the same phrase
-            is never translated twice in a session, keeping things fast.</p>
-
-            <h4>Step 2 — API Query</h4>
-            <p>The translated claim is sent to the Google Fact Check Tools API, which searches its full index
-            of reviewed claims. The API returns matching claims along with the publisher that reviewed them,
-            their verdict, and a URL to the full fact-check article.</p>
-
-            <h4>Step 3 — AI Similarity Scoring</h4>
-            <p>Raw API results may include loosely related claims. FactScope re-ranks them using
-            <span class="mono-tag">sentence-transformers</span>
-            (<span class="mono-tag">all-MiniLM-L6-v2</span>), which encodes both your query and each
-            returned claim into semantic vectors and computes cosine similarity. Results are sorted
-            highest-to-lowest so the most relevant match always appears first.</p>
-
-            <h4>Step 4 — Rating Interpretation</h4>
-            <p>Ratings are colour-coded by verdict type:
-            <span class="mono-tag" style="background:#d5f5e3;color:#27ae60;">True / Correct</span>
-            <span class="mono-tag" style="background:#fde8e8;color:#c0392b;">False / Fake</span>
-            <span class="mono-tag" style="background:#fef3d0;color:#7d5632;">Misleading / Mixture</span>
-            <span class="mono-tag" style="background:#d4f1ee;color:#2a9d8f;">Unrated / Unknown</span>
-            </p>
-
-            <h4>Step 5 — Export</h4>
-            <p>Each individual fact check can be saved as a styled PDF using <em>Save as PDF</em>.
-            The <em>Download session report</em> button in the history panel exports every claim checked
-            during your current session into a single document.</p>
-
-            <h4>Limitations</h4>
-            <p>FactScope can only verify claims already reviewed by a professional fact-checking organisation
-            and indexed by Google. Newly circulating claims, highly localised news, or niche topics may not
-            appear. A "No records found" response does not mean a claim is true — it means it has not yet
-            been formally reviewed. In that case, try rephrasing or check Snopes, PolitiFact, or AFP directly.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            "<div class='deep-panel'>"
+            "<h4>What is FactScope?</h4>"
+            "<p>FactScope is an AI-assisted fact-verification tool that cross-references user-submitted claims against the <strong>Google Fact Check Tools API</strong> — a curated index of fact-check articles published by professional organisations worldwide: PolitiFact, Snopes, AFP Fact Check, BBC Reality Check, Vishvas News, and hundreds more.</p>"
+            
+            "<h4>Step 1 — Input &amp; Translation</h4>"
+            "<p>You type a claim, headline, or any piece of text. For non-English languages, FactScope uses <span class='mono-tag'>deep-translator</span> (backed by Google Translate) to convert your input to English before querying the database — then translates all results back into your chosen language. All translations are cached with <span class='mono-tag'>@st.cache_data</span> so the same phrase is never translated twice in a session, keeping things fast.</p>"
+            
+            "<h4>Step 2 — API Query</h4>"
+            "<p>The translated claim is sent to the Google Fact Check Tools API, which searches its full index of reviewed claims. The API returns matching claims along with the publisher that reviewed them, their verdict, and a URL to the full fact-check article.</p>"
+            
+            "<h4>Step 3 — AI Similarity Scoring</h4>"
+            "<p>Raw API results may include loosely related claims. FactScope re-ranks them using <span class='mono-tag'>sentence-transformers</span> (<span class='mono-tag'>all-MiniLM-L6-v2</span>), which encodes both your query and each returned claim into semantic vectors and computes cosine similarity. Results are sorted highest-to-lowest so the most relevant match always appears first.</p>"
+            
+            "<h4>Step 4 — Rating Interpretation</h4>"
+            "<p>Ratings are colour-coded by verdict type: "
+            "<span class='mono-tag' style='background:#d5f5e3;color:#27ae60;'>True / Correct</span> "
+            "<span class='mono-tag' style='background:#fde8e8;color:#c0392b;'>False / Fake</span> "
+            "<span class='mono-tag' style='background:#fef3d0;color:#7d5632;'>Misleading / Mixture</span> "
+            "<span class='mono-tag' style='background:#d4f1ee;color:#2a9d8f;'>Unrated / Unknown</span></p>"
+            
+            "<h4>Step 5 — Export</h4>"
+            "<p>Each individual fact check can be saved as a styled PDF using <em>Save as PDF</em>. The <em>Download session report</em> button in the history panel exports every claim checked during your current session into a single document.</p>"
+            
+            "<h4>Limitations</h4>"
+            "<p>FactScope can only verify claims already reviewed by a professional fact-checking organisation and indexed by Google. Newly circulating claims, highly localised news, or niche topics may not appear. A &quot;No records found&quot; response does not mean a claim is true — it means it has not yet been formally reviewed. In that case, try rephrasing or check Snopes, PolitiFact, or AFP directly.</p>"
+            "</div>",
+            unsafe_allow_html=True
+        )
 
     # ── Final CTA ────────────────────────────────────────
     c1, c2, c3 = st.columns([1,2,1])
