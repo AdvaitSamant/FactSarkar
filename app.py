@@ -3,6 +3,7 @@ import requests
 import urllib.parse
 import base64
 import io
+import json
 from datetime import datetime
 from sentence_transformers import SentenceTransformer, util
 from deep_translator import GoogleTranslator
@@ -15,30 +16,31 @@ from reportlab.lib.enums import TA_CENTER
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="FactScope – Fact-Check with Intelligence",
+    page_title="TruthScope",
     layout="wide",
     initial_sidebar_state="collapsed",
-    menu_items={'About': "FactScope – Verify facts with global fact-checking databases"}
+    menu_items={'About': "TruthScope: Verify facts with global databases and AI reasoning"}
 )
 
 # ── SESSION STATE ─────────────────────────────────────────────────────────────
 for k, v in {
-    'history': [],       # list of {query, results, timestamp}
-    'results': None,     # current results (list or [])
-    'last_query': "",
-    'page': "landing",
-    'language': "en",
+    'history':        [],
+    'results':        None,
+    'llm_analysis':   None,
+    'last_query':     "",
+    'page':           "landing",
+    'language':       "en",
     'show_deep_dive': False,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# ── MODEL ─────────────────────────────────────────────────────────────────────
+# ── SIMILARITY MODEL ──────────────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
     return SentenceTransformer('all-MiniLM-L6-v2')
 
-model = load_model()
+sim_model = load_model()
 
 # ── LANGUAGE ──────────────────────────────────────────────────────────────────
 LANG_MAP = {
@@ -49,7 +51,6 @@ LANG_MAP = {
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def tr(text: str, lang: str) -> str:
-    """Translate text to lang; cached so repeated calls are instant."""
     if not text or lang == "en":
         return text
     try:
@@ -68,7 +69,7 @@ st.markdown("""
 :root {
   --b50:#fdf8f3; --b100:#f5ece0; --b200:#e8d5bc; --b300:#d4b896;
   --b400:#b8926a; --b500:#9b7145; --b600:#7d5632; --b700:#5c3d1e; --b800:#3d2710;
-  --teal:#2a9d8f; --teal-lt:#d4f1ee;
+  --teal:#2a9d8f; --teal-lt:#d4f1ee; --teal-dk:#1a6b60;
   --amber:#e9a825; --amber-lt:#fef3d0;
   --red:#c0392b;   --red-lt:#fde8e8;
   --green:#27ae60; --green-lt:#d5f5e3;
@@ -84,7 +85,6 @@ html,body,[data-testid="stAppViewContainer"]{
   color:var(--tp);
 }
 
-/* Give the page breathing room at the top */
 .block-container{
   padding-top:2.8rem!important;
   padding-bottom:2.5rem!important;
@@ -99,10 +99,10 @@ html,body,[data-testid="stAppViewContainer"]{
   font-family:'Playfair Display',serif;
   font-size:1.6rem;font-weight:800;
   color:var(--b700);letter-spacing:-.5px;line-height:1;
-  padding-top:8px;
+  padding-top:8px;display:block;
 }
 .nav-logo span{color:var(--teal);}
-.nav-tagline{font-size:.76rem;color:var(--tm);font-style:italic;margin-top:1px;}
+.nav-tagline{font-size:.76rem;color:var(--tm);font-style:italic;margin-top:2px;}
 
 .lang-lbl{
   font-family:'DM Mono',monospace;font-size:.62rem;font-weight:500;
@@ -160,7 +160,10 @@ html,body,[data-testid="stAppViewContainer"]{
   font-size:.66rem;font-weight:500;letter-spacing:1.4px;
   text-transform:uppercase;margin-bottom:14px;
 }
-.hero-sub{font-size:1.05rem;color:var(--ts);max-width:490px;line-height:1.75;margin-top:10px;font-weight:300;}
+.hero-sub{
+  font-size:1.05rem;color:var(--ts);
+  max-width:490px;line-height:1.75;margin-top:10px;font-weight:300;
+}
 
 /* ── FEATURE GRID ── */
 .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin:14px 0 4px;}
@@ -174,18 +177,66 @@ html,body,[data-testid="stAppViewContainer"]{
 .feat-title{font-size:.9rem;font-weight:600;color:var(--tp);margin-bottom:4px;}
 .feat-desc{font-size:.78rem;color:var(--tm);line-height:1.5;}
 
+/* ── LLM CARD on landing ── */
+.llm-card{
+  background:linear-gradient(135deg,var(--b700) 0%,var(--b600) 100%);
+  border-radius:14px;padding:24px 26px;margin:14px 0 4px;
+  color:white;position:relative;overflow:hidden;
+}
+.llm-card::after{
+  content:'N';position:absolute;right:20px;bottom:-20px;
+  font-family:'Playfair Display',serif;font-size:9rem;
+  color:rgba(255,255,255,.07);font-weight:800;line-height:1;
+}
+.llm-card-title{
+  font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:800;
+  color:white;margin-bottom:6px;letter-spacing:-.3px;
+}
+.llm-card-sub{
+  font-family:'DM Mono',monospace;font-size:.62rem;font-weight:500;
+  letter-spacing:1.6px;text-transform:uppercase;
+  color:rgba(255,255,255,.55);margin-bottom:10px;
+}
+.llm-card-body{font-size:.84rem;color:rgba(255,255,255,.82);line-height:1.65;}
+.llm-card-tag{
+  display:inline-block;background:rgba(255,255,255,.15);
+  border:1px solid rgba(255,255,255,.25);border-radius:4px;
+  padding:1px 8px;font-family:'DM Mono',monospace;
+  font-size:.68rem;color:rgba(255,255,255,.85);margin:3px 2px 0;
+}
+
 /* ── STEPS ROW ── */
 .steps-row{
-  display:grid;grid-template-columns:repeat(4,1fr);
+  display:grid;grid-template-columns:repeat(5,1fr);
   background:var(--b100);border:1px solid var(--border);
   border-radius:11px;overflow:hidden;margin:8px 0 16px;
 }
-.step-item{padding:18px 14px;text-align:center;border-right:1px solid var(--border);}
+.step-item{padding:18px 12px;text-align:center;border-right:1px solid var(--border);}
 .step-item:last-child{border-right:none;}
-.step-num{font-family:'Playfair Display',serif;font-size:1.9rem;font-weight:800;color:var(--b300);line-height:1;margin-bottom:5px;}
-.step-text{font-size:.78rem;color:var(--ts);line-height:1.4;}
+.step-num{font-family:'Playfair Display',serif;font-size:1.7rem;font-weight:800;color:var(--b300);line-height:1;margin-bottom:5px;}
+.step-text{font-size:.75rem;color:var(--ts);line-height:1.4;}
 
-/* ── DEEP-DIVE PANEL ── */
+/* ── DEEP DIVE BUTTON (themed, not Streamlit default) ── */
+.dive-btn-wrap a,
+.dive-btn-wrap button{
+  display:inline-block;
+  background:var(--b100);
+  color:var(--b700)!important;
+  border:1.5px solid var(--b300);
+  border-radius:9px;
+  padding:7px 16px;
+  font-family:'Source Serif 4',serif;
+  font-size:.84rem;font-weight:600;
+  cursor:pointer;text-decoration:none;
+  transition:background .2s,box-shadow .2s;
+  white-space:nowrap;
+}
+.dive-btn-wrap button:hover{
+  background:var(--b200);
+  box-shadow:0 3px 10px rgba(92,61,30,.12);
+}
+
+/* ── DEEP DIVE PANEL ── */
 .deep-panel{
   background:var(--card);border:1px solid var(--border);
   border-radius:13px;padding:26px 28px;margin:10px 0 18px;
@@ -225,21 +276,6 @@ html,body,[data-testid="stAppViewContainer"]{
   font-family:'Source Serif 4',serif!important;
   font-size:.86rem!important;border-radius:9px!important;
 }
-/* Tertiary (Ghost) Buttons */
-[data-testid="baseButton-tertiary"]{
-  background:transparent!important;
-  color:var(--b600)!important;
-  font-family:'Source Serif 4',serif!important;
-  font-size:.9rem!important;font-weight:600!important;
-  border:none!important;
-  padding:0!important;
-  transition:color .2s!important;
-}
-[data-testid="baseButton-tertiary"]:hover{
-  color:var(--b800)!important;
-  background:transparent!important;
-  text-decoration:underline;
-}
 
 /* ── INPUTS ── */
 textarea,input[type="text"]{
@@ -254,7 +290,6 @@ textarea:focus,input[type="text"]:focus{
   box-shadow:0 0 0 3px rgba(155,113,69,.12)!important;
 }
 
-/* hide duplicate selectbox label */
 [data-testid="stSelectbox"] label{display:none!important;}
 [data-testid="stSelectbox"]>div{margin-top:0!important;}
 
@@ -268,6 +303,38 @@ textarea:focus,input[type="text"]:focus{
   transition:box-shadow .2s;
 }
 .result-card:hover{box-shadow:0 5px 16px rgba(92,61,30,.09);}
+
+/* ── LLM ANALYSIS CARD ── */
+.llm-analysis-card{
+  background:linear-gradient(135deg,var(--b800) 0%,var(--b700) 100%);
+  border-radius:13px;padding:24px 26px;margin:18px 0 6px;
+  position:relative;overflow:hidden;
+}
+.llm-analysis-card::before{
+  content:'';position:absolute;top:-30px;right:-30px;
+  width:160px;height:160px;
+  background:radial-gradient(circle,rgba(255,255,255,.06) 0%,transparent 70%);
+  border-radius:50%;
+}
+.llm-analysis-header{
+  display:flex;align-items:center;gap:10px;margin-bottom:14px;
+}
+.llm-analysis-badge{
+  font-family:'DM Mono',monospace;font-size:.6rem;font-weight:500;
+  letter-spacing:1.8px;text-transform:uppercase;
+  background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);
+  border:1px solid rgba(255,255,255,.18);border-radius:100px;
+  padding:2px 10px;
+}
+.llm-analysis-model{
+  font-family:'DM Mono',monospace;font-size:.6rem;
+  color:rgba(255,255,255,.4);letter-spacing:.8px;
+}
+.llm-analysis-body{
+  font-size:.92rem;color:rgba(255,255,255,.9);
+  line-height:1.75;font-weight:300;
+  font-family:'Source Serif 4',serif;
+}
 
 .no-res-card{
   background:var(--b100);border:1px dashed var(--b300);
@@ -300,7 +367,6 @@ textarea:focus,input[type="text"]:focus{
 .pill-mixed {background:var(--amber-lt);color:var(--b600);}
 .pill-unrated{background:var(--teal-lt);color:var(--teal);}
 
-/* ── HISTORY ── */
 .hist-item{
   background:var(--b100);border:1px solid var(--border);
   border-radius:7px;padding:7px 10px;margin-bottom:5px;
@@ -308,7 +374,6 @@ textarea:focus,input[type="text"]:focus{
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 
-/* ── PDF BUTTON ── */
 .pdf-btn a button{
   background:linear-gradient(135deg,#7d5632,#9b7145);
   color:white;border:none;
@@ -318,6 +383,10 @@ textarea:focus,input[type="text"]:focus{
   cursor:pointer;
   box-shadow:0 2px 8px rgba(92,61,30,.22);
   transition:all .2s;
+}
+.pdf-btn a button:hover{
+  background:linear-gradient(135deg,#5c3d1e,#7d5632);
+  box-shadow:0 4px 12px rgba(92,61,30,.32);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -364,54 +433,153 @@ def fact_check(query, api_key):
         return f"error:{str(e)[:60]}"
 
 def add_scores(results, query_text):
-    q = model.encode(query_text, convert_to_tensor=True)
+    q = sim_model.encode(query_text, convert_to_tensor=True)
     for res in results:
-        c = model.encode(res['claim'], convert_to_tensor=True)
+        c = sim_model.encode(res['claim'], convert_to_tensor=True)
         res['similarity_score'] = max(0, min(100, int(util.cos_sim(q, c).item() * 100)))
     return sorted(results, key=lambda x: x['similarity_score'], reverse=True)
+
+
+# ── LLM (Nemotron via OpenRouter) ─────────────────────────────────────────────
+
+LLM_MODEL  = "nvidia/nemotron-3-nano-30b-a3b:free"
+LLM_BASE   = "https://openrouter.ai/api/v1/chat/completions"
+
+def build_llm_prompt(user_query, results):
+    """Build a structured prompt from the fact-check results."""
+    if not results:
+        context = "No matching records were found in the fact-check database for this claim."
+    else:
+        lines = []
+        for i, r in enumerate(results, 1):
+            lines.append(
+                f"Result {i}: Claim: {r['claim']} | "
+                f"Claimant: {r['made_by']} | "
+                f"Checked by: {r['fact_checker']} | "
+                f"Rating: {r['rating']} | "
+                f"Match score: {r['similarity_score']}%"
+            )
+        context = "\n".join(lines)
+
+    return (
+        f"You are TruthScope, an expert AI fact-checking analyst. "
+        f"A user has submitted the following claim for verification:\n\n"
+        f"USER CLAIM: {user_query}\n\n"
+        f"FACT-CHECK DATABASE RESULTS:\n{context}\n\n"
+        f"Using the above data, provide a clear, structured analysis. "
+        f"Explain what the evidence suggests about the claim, reference the most relevant results, "
+        f"discuss the credibility of the sources, and give a final verdict. "
+        f"Be concise, authoritative, and write in plain prose without bullet points or dashes. "
+        f"Do not use any markdown headers."
+    )
+
+def call_llm(user_query, results, llm_key):
+    """Single-turn call to Nemotron with reasoning enabled. Returns analysis text."""
+    prompt = build_llm_prompt(user_query, results)
+    headers = {
+        "Authorization": f"Bearer {llm_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": LLM_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "reasoning": {"enabled": True},
+        "max_tokens": 800,
+    }
+    try:
+        resp = requests.post(LLM_BASE, headers=headers,
+                             data=json.dumps(payload), timeout=45)
+        resp.raise_for_status()
+        data = resp.json()
+        msg  = data['choices'][0]['message']
+        text = msg.get('content') or ""
+
+        # Follow-up: ask model to confirm its verdict using its own reasoning
+        messages_followup = [
+            {"role": "user",      "content": prompt},
+            {
+                "role":             "assistant",
+                "content":          text,
+                "reasoning_details": msg.get('reasoning_details'),
+            },
+            {
+                "role":    "user",
+                "content": (
+                    "Based on your analysis, state your final one-sentence verdict "
+                    "on whether this claim is true, false, misleading, or unverified, "
+                    "and why. Be direct and concise."
+                ),
+            },
+        ]
+        payload2 = {
+            "model":     LLM_MODEL,
+            "messages":  messages_followup,
+            "reasoning": {"enabled": True},
+            "max_tokens": 150,
+        }
+        resp2   = requests.post(LLM_BASE, headers=headers,
+                                data=json.dumps(payload2), timeout=30)
+        verdict = ""
+        if resp2.status_code == 200:
+            verdict = resp2.json()['choices'][0]['message'].get('content','').strip()
+
+        return text.strip(), verdict
+    except Exception as e:
+        return None, f"LLM unavailable: {str(e)[:80]}"
 
 
 # ── PDF BUILDERS ──────────────────────────────────────────────────────────────
 
 def _doc_styles():
-    br   = colors.HexColor("#5c3d1e")
-    muted= colors.HexColor("#a07850")
-    sec  = colors.HexColor("#6b4c33")
-    light= colors.HexColor("#f5ece0")
-    S    = getSampleStyleSheet()
+    br    = colors.HexColor("#5c3d1e")
+    muted = colors.HexColor("#a07850")
+    sec   = colors.HexColor("#6b4c33")
+    light = colors.HexColor("#f5ece0")
+    S     = getSampleStyleSheet()
     return br, muted, sec, light, S
 
-def build_single_pdf(query, results):
+def build_single_pdf(query, results, llm_analysis=None, llm_verdict=None):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
           leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     br, muted, sec, light, S = _doc_styles()
 
-    heading = ParagraphStyle('H', fontName='Times-Bold',   fontSize=22, textColor=br,   spaceAfter=3,  leading=26)
-    sub     = ParagraphStyle('S', fontName='Times-Italic', fontSize=10, textColor=muted, spaceAfter=14, leading=14)
-    lbl     = ParagraphStyle('L', fontName='Courier-Bold', fontSize=7.5,textColor=muted, spaceAfter=1,  leading=10)
-    claim   = ParagraphStyle('C', fontName='Times-Bold',   fontSize=11, textColor=colors.HexColor("#2c1a0e"), spaceAfter=8, leading=16)
-    val     = ParagraphStyle('V', fontName='Times-Roman',  fontSize=9.5,textColor=sec,   spaceAfter=5,  leading=14)
-    foot    = ParagraphStyle('F', fontName='Times-Italic', fontSize=8,  textColor=muted, alignment=TA_CENTER)
+    heading  = ParagraphStyle('H',  fontName='Times-Bold',   fontSize=22, textColor=br,   spaceAfter=3,  leading=26)
+    sub      = ParagraphStyle('S',  fontName='Times-Italic', fontSize=10, textColor=muted, spaceAfter=14, leading=14)
+    lbl      = ParagraphStyle('L',  fontName='Courier-Bold', fontSize=7.5,textColor=muted, spaceAfter=1,  leading=10)
+    claim_st = ParagraphStyle('C',  fontName='Times-Bold',   fontSize=11, textColor=colors.HexColor("#2c1a0e"), spaceAfter=8, leading=16)
+    body_st  = ParagraphStyle('B',  fontName='Times-Roman',  fontSize=10, textColor=sec,   spaceAfter=5,  leading=15)
+    foot     = ParagraphStyle('F',  fontName='Times-Italic', fontSize=8,  textColor=muted, alignment=TA_CENTER)
 
     story = [
-        Paragraph("FactScope", heading),
-        Paragraph(f"Fact Check Report &nbsp;·&nbsp; {datetime.now().strftime('%d %B %Y, %H:%M')}", sub),
+        Paragraph("TruthScope", heading),
+        Paragraph(f"Fact Check Report   {datetime.now().strftime('%d %B %Y, %H:%M')}", sub),
         HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e8d5bc"), spaceAfter=10),
         Paragraph("QUERY", lbl),
-        Paragraph(query, claim),
+        Paragraph(query, claim_st),
         HRFlowable(width="100%", thickness=.5, color=colors.HexColor("#e8d5bc"), spaceAfter=12),
     ]
 
+    if llm_verdict:
+        story.append(Paragraph("AI VERDICT", lbl))
+        story.append(Paragraph(llm_verdict, body_st))
+        story.append(Spacer(1, .2*cm))
+
+    if llm_analysis:
+        story.append(Paragraph("AI ANALYSIS", lbl))
+        story.append(Paragraph(llm_analysis.replace('\n', '<br/>'), body_st))
+        story.append(Spacer(1, .3*cm))
+        story.append(HRFlowable(width="100%", thickness=.5, color=colors.HexColor("#e8d5bc"), spaceAfter=12))
+
     for i, res in enumerate(results, 1):
-        story.append(Paragraph(f"RESULT {i}", lbl))
-        story.append(Paragraph(res['claim'], claim))
+        story.append(Paragraph(f"DATABASE RESULT {i}", lbl))
+        story.append(Paragraph(res['claim'], claim_st))
         data = [
-            ["Match",      f"{res['similarity_score']}%"],
-            ["Claimant",   res['made_by']],
-            ["Verified by",res['fact_checker']],
-            ["Rating",     res['rating']],
-            ["Source",     res['source_link']],
+            ["Match",       f"{res['similarity_score']}%"],
+            ["Claimant",    res['made_by']],
+            ["Verified by", res['fact_checker']],
+            ["Rating",      res['rating']],
+            ["Source",      res['source_link']],
         ]
         tbl = Table(data, colWidths=[3.2*cm, 13.3*cm])
         tbl.setStyle(TableStyle([
@@ -428,14 +596,13 @@ def build_single_pdf(query, results):
             ('LEFTPADDING',(0,0),(-1,-1), 6),
         ]))
         story.append(tbl)
-        story.append(Spacer(1, .45*cm))
+        story.append(Spacer(1, .4*cm))
         if i < len(results):
-            story.append(HRFlowable(width="100%", thickness=.5,
-                          color=colors.HexColor("#e8d5bc"), spaceAfter=10))
+            story.append(HRFlowable(width="100%", thickness=.5, color=colors.HexColor("#e8d5bc"), spaceAfter=10))
 
     story += [Spacer(1, .7*cm),
               HRFlowable(width="100%", thickness=.5, color=colors.HexColor("#e8d5bc"), spaceAfter=5),
-              Paragraph("Generated by FactScope", foot)]
+              Paragraph("Generated by TruthScope", foot)]
     doc.build(story)
     buf.seek(0)
     return buf.read()
@@ -447,22 +614,33 @@ def build_session_pdf(history):
           leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     br, muted, sec, light, S = _doc_styles()
 
-    heading = ParagraphStyle('H', fontName='Times-Bold',   fontSize=22, textColor=br,   spaceAfter=3,  leading=26)
-    sub     = ParagraphStyle('S', fontName='Times-Italic', fontSize=10, textColor=muted, spaceAfter=14, leading=14)
-    lbl     = ParagraphStyle('L', fontName='Courier-Bold', fontSize=7,  textColor=muted, spaceAfter=1,  leading=10)
-    q_style = ParagraphStyle('Q', fontName='Times-Bold',   fontSize=11, textColor=colors.HexColor("#2c1a0e"), spaceAfter=6, leading=16)
-    val     = ParagraphStyle('V', fontName='Times-Roman',  fontSize=9,  textColor=sec,   spaceAfter=4,  leading=13)
-    foot    = ParagraphStyle('F', fontName='Times-Italic', fontSize=8,  textColor=muted, alignment=TA_CENTER)
+    heading  = ParagraphStyle('H',  fontName='Times-Bold',   fontSize=22, textColor=br,   spaceAfter=3,  leading=26)
+    sub      = ParagraphStyle('S',  fontName='Times-Italic', fontSize=10, textColor=muted, spaceAfter=14, leading=14)
+    lbl      = ParagraphStyle('L',  fontName='Courier-Bold', fontSize=7,  textColor=muted, spaceAfter=1,  leading=10)
+    q_st     = ParagraphStyle('Q',  fontName='Times-Bold',   fontSize=11, textColor=colors.HexColor("#2c1a0e"), spaceAfter=6, leading=16)
+    val      = ParagraphStyle('V',  fontName='Times-Roman',  fontSize=9,  textColor=sec,   spaceAfter=4,  leading=13)
+    ai_st    = ParagraphStyle('AI', fontName='Times-Italic', fontSize=9,  textColor=sec,   spaceAfter=5,  leading=14)
+    foot     = ParagraphStyle('F',  fontName='Times-Italic', fontSize=8,  textColor=muted, alignment=TA_CENTER)
 
     story = [
-        Paragraph("FactScope", heading),
-        Paragraph(f"Session Report &nbsp;·&nbsp; {datetime.now().strftime('%d %B %Y, %H:%M')} &nbsp;·&nbsp; {len(history)} check(s)", sub),
+        Paragraph("TruthScope", heading),
+        Paragraph(f"Session Report   {datetime.now().strftime('%d %B %Y, %H:%M')}   {len(history)} check(s)", sub),
         HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e8d5bc"), spaceAfter=14),
     ]
 
     for ci, check in enumerate(history, 1):
         story.append(Paragraph(f"CHECK {ci}", lbl))
-        story.append(Paragraph(check['query'], q_style))
+        story.append(Paragraph(check['query'], q_st))
+
+        if check.get('llm_verdict'):
+            story.append(Paragraph("AI VERDICT", lbl))
+            story.append(Paragraph(check['llm_verdict'], ai_st))
+
+        if check.get('llm_analysis'):
+            story.append(Paragraph("AI ANALYSIS", lbl))
+            story.append(Paragraph(check['llm_analysis'].replace('\n','<br/>'), ai_st))
+            story.append(Spacer(1, .15*cm))
+
         if not check['results']:
             story.append(Paragraph("No verified records found.", val))
         else:
@@ -492,14 +670,14 @@ def build_session_pdf(history):
                 ]))
                 story.append(tbl)
                 story.append(Spacer(1, .2*cm))
+
         story.append(Spacer(1, .35*cm))
         if ci < len(history):
-            story.append(HRFlowable(width="100%", thickness=.5,
-                          color=colors.HexColor("#e8d5bc"), spaceAfter=8))
+            story.append(HRFlowable(width="100%", thickness=.5, color=colors.HexColor("#e8d5bc"), spaceAfter=8))
 
     story += [Spacer(1, .7*cm),
               HRFlowable(width="100%", thickness=.5, color=colors.HexColor("#e8d5bc"), spaceAfter=5),
-              Paragraph("Generated by FactScope", foot)]
+              Paragraph("Generated by TruthScope", foot)]
     doc.build(story)
     buf.seek(0)
     return buf.read()
@@ -519,11 +697,11 @@ def pdf_dl_button(label, pdf_bytes, filename):
 # ══════════════════════════════════════════════════════════════════════════════
 def landing(lang):
 
-    # ── Top bar ──────────────────────────────────────────
-    c_logo, c_space, c_lbl, c_sel = st.columns([3, 3, 0.85, 1.35])
+    # Navbar: logo left, language right, perfectly aligned
+    c_logo, c_mid, c_lbl, c_sel = st.columns([3, 3, 0.85, 1.35])
     with c_logo:
         st.markdown(
-            "<div class='nav-logo' style='padding-top:8px;'>Fact<span>Scope</span></div>",
+            "<div class='nav-logo'>Truth<span>Scope</span></div>",
             unsafe_allow_html=True
         )
     with c_lbl:
@@ -536,13 +714,13 @@ def landing(lang):
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-    # ── Hero ─────────────────────────────────────────────
+    # Hero
     st.markdown(f"""
     <div class="hero-wrap">
-        <div class="hero-pill">Fact-Checking Intelligence</div>
+        <div class="hero-pill">AI-Powered Fact Verification</div>
         <div class="t-hero">Truth is<br>non-negotiable.</div>
         <p class="hero-sub">
-            {T('Verify claims, expose misinformation, and trace every story back to its source — powered by global fact-checking databases and AI accuracy matching.', lang)}
+            {T('Verify claims, expose misinformation, and trace every story back to its source — powered by global fact-checking databases and AI reasoning.', lang)}
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -555,18 +733,18 @@ def landing(lang):
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-    # ── Features ─────────────────────────────────────────
-    st.markdown("<p class='section-label'>Why FactScope?</p>", unsafe_allow_html=True)
+    # Features
+    st.markdown("<p class='section-label'>Why TruthScope?</p>", unsafe_allow_html=True)
     st.markdown(f"<div class='t-section'>{T('Built for a world full of noise', lang)}</div>",
                 unsafe_allow_html=True)
 
     feats = [
-        ("◎", T("Global Coverage",   lang), T("Verified claims from fact-checkers across 50+ countries", lang)),
-        ("◈", T("AI Accuracy Match", lang), T("Cosine-similarity scoring finds the closest verified claim", lang)),
-        ("◉", T("8+ Languages",      lang), T("Verify in Hindi, Marathi, French, Spanish & more", lang)),
-        ("◆", T("Real-Time Results", lang), T("Instant verification with links to primary source reports", lang)),
-        ("◇", T("Confidence Scores", lang), T("Every result carries a transparent match percentage", lang)),
-        ("◈", T("Trusted Sources",   lang), T("Only established, credentialed fact-checking organisations", lang)),
+        ("◎", T("Global Coverage",     lang), T("Verified claims from fact-checkers across 50+ countries", lang)),
+        ("◈", T("AI Accuracy Match",   lang), T("Cosine-similarity scoring finds the closest verified claim", lang)),
+        ("◉", T("8+ Languages",        lang), T("Verify in Hindi, Marathi, French, Spanish and more", lang)),
+        ("◆", T("AI Reasoning Engine", lang), T("Nemotron AI synthesises all results into a clear verdict", lang)),
+        ("◇", T("Confidence Scores",   lang), T("Every result carries a transparent match percentage", lang)),
+        ("◈", T("Trusted Sources",     lang), T("Only established, credentialed fact-checking organisations", lang)),
     ]
     st.markdown(
         "<div class='feat-grid'>" +
@@ -578,7 +756,32 @@ def landing(lang):
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-    # ── How It Works ─────────────────────────────────────
+    # LLM card
+    st.markdown("<p class='section-label'>AI Engine</p>", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="llm-card">
+        <div class="llm-card-sub">Powered by</div>
+        <div class="llm-card-title">NVIDIA Nemotron 3 Nano 30B A3B</div>
+        <p class="llm-card-body">
+            {T("TruthScope uses NVIDIA's Nemotron 3 Nano 30B A3B as its reasoning engine. "
+               "After the Google Fact Check API retrieves matching database records, "
+               "Nemotron analyses all results in context, weighs the credibility of each source, "
+               "and synthesises a plain-language verdict using a two-turn reasoning chain. "
+               "The first turn produces a full analysis; the second turn asks the model to "
+               "confirm and distil its conclusion into a single definitive sentence.", lang)}
+        </p>
+        <div style="margin-top:12px;">
+            <span class="llm-card-tag">30B parameters</span>
+            <span class="llm-card-tag">Chain-of-thought reasoning</span>
+            <span class="llm-card-tag">OpenRouter API</span>
+            <span class="llm-card-tag">Free tier</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+
+    # How It Works
     st.markdown("<p class='section-label'>Process</p>", unsafe_allow_html=True)
 
     col_title, col_btn = st.columns([3, 1])
@@ -586,19 +789,19 @@ def landing(lang):
         st.markdown(f"<div class='t-section' style='margin-bottom:8px;'>{T('How It Works', lang)}</div>",
                     unsafe_allow_html=True)
     with col_btn:
-        st.markdown("<div style='padding-top:6px;'></div>", unsafe_allow_html=True)
-        dive_label = T("Hide details", lang) if st.session_state.show_deep_dive else T("In-depth guide", lang)
-        
-        # Add type="tertiary" here
-        if st.button(dive_label, key="deep_btn", type="tertiary"):
+        st.markdown("<div style='padding-top:4px;'></div>", unsafe_allow_html=True)
+        # Render the in-depth guide as a themed HTML button that triggers session state
+        dive_label = T("Hide guide", lang) if st.session_state.show_deep_dive else T("In-depth guide", lang)
+        if st.button(dive_label, key="deep_btn"):
             st.session_state.show_deep_dive = not st.session_state.show_deep_dive
             st.rerun()
 
     steps = [
-        ("01", T("Paste a claim or news excerpt", lang)),
-        ("02", T("AI queries global fact-check databases", lang)),
-        ("03", T("Results ranked by similarity score", lang)),
-        ("04", T("Access full reports and source links", lang)),
+        ("01", T("Paste a claim or headline", lang)),
+        ("02", T("Google Fact Check API searches the database", lang)),
+        ("03", T("AI ranks results by semantic similarity", lang)),
+        ("04", T("Nemotron reasons over all evidence and delivers a verdict", lang)),
+        ("05", T("Export the full report as a PDF", lang)),
     ]
     st.markdown(
         "<div class='steps-row'>" +
@@ -608,37 +811,65 @@ def landing(lang):
     )
 
     if st.session_state.show_deep_dive:
-        st.markdown(
-            "<div class='deep-panel'>"
-            "<h4>What is FactScope?</h4>"
-            "<p>FactScope is an AI-assisted fact-verification tool that cross-references user-submitted claims against the <strong>Google Fact Check Tools API</strong> — a curated index of fact-check articles published by professional organisations worldwide: PolitiFact, Snopes, AFP Fact Check, BBC Reality Check, Vishvas News, and hundreds more.</p>"
-            
-            "<h4>Step 1 — Input &amp; Translation</h4>"
-            "<p>You type a claim, headline, or any piece of text. For non-English languages, FactScope uses <span class='mono-tag'>deep-translator</span> (backed by Google Translate) to convert your input to English before querying the database — then translates all results back into your chosen language. All translations are cached with <span class='mono-tag'>@st.cache_data</span> so the same phrase is never translated twice in a session, keeping things fast.</p>"
-            
-            "<h4>Step 2 — API Query</h4>"
-            "<p>The translated claim is sent to the Google Fact Check Tools API, which searches its full index of reviewed claims. The API returns matching claims along with the publisher that reviewed them, their verdict, and a URL to the full fact-check article.</p>"
-            
-            "<h4>Step 3 — AI Similarity Scoring</h4>"
-            "<p>Raw API results may include loosely related claims. FactScope re-ranks them using <span class='mono-tag'>sentence-transformers</span> (<span class='mono-tag'>all-MiniLM-L6-v2</span>), which encodes both your query and each returned claim into semantic vectors and computes cosine similarity. Results are sorted highest-to-lowest so the most relevant match always appears first.</p>"
-            
-            "<h4>Step 4 — Rating Interpretation</h4>"
-            "<p>Ratings are colour-coded by verdict type: "
-            "<span class='mono-tag' style='background:#d5f5e3;color:#27ae60;'>True / Correct</span> "
-            "<span class='mono-tag' style='background:#fde8e8;color:#c0392b;'>False / Fake</span> "
-            "<span class='mono-tag' style='background:#fef3d0;color:#7d5632;'>Misleading / Mixture</span> "
-            "<span class='mono-tag' style='background:#d4f1ee;color:#2a9d8f;'>Unrated / Unknown</span></p>"
-            
-            "<h4>Step 5 — Export</h4>"
-            "<p>Each individual fact check can be saved as a styled PDF using <em>Save as PDF</em>. The <em>Download session report</em> button in the history panel exports every claim checked during your current session into a single document.</p>"
-            
-            "<h4>Limitations</h4>"
-            "<p>FactScope can only verify claims already reviewed by a professional fact-checking organisation and indexed by Google. Newly circulating claims, highly localised news, or niche topics may not appear. A &quot;No records found&quot; response does not mean a claim is true — it means it has not yet been formally reviewed. In that case, try rephrasing or check Snopes, PolitiFact, or AFP directly.</p>"
-            "</div>",
-            unsafe_allow_html=True
-        )
+        st.markdown("""
+        <div class="deep-panel">
+            <h4>What is TruthScope?</h4>
+            <p>TruthScope is an AI-assisted fact-verification tool that cross-references user-submitted
+            claims against the <strong>Google Fact Check Tools API</strong>, a curated index of
+            fact-check articles published by professional organisations worldwide: PolitiFact, Snopes,
+            AFP Fact Check, BBC Reality Check, Vishvas News, and hundreds more. All retrieved results
+            are then processed by an NVIDIA Nemotron reasoning model that synthesises a final verdict.</p>
 
-    # ── Final CTA ────────────────────────────────────────
+            <h4>Step 1: Input and Translation</h4>
+            <p>You type a claim, headline, or any piece of text. For non-English languages, TruthScope
+            uses <span class="mono-tag">deep-translator</span> backed by Google Translate to convert
+            your input to English before querying the database, then translates all results back into
+            your chosen language. Translations are cached with
+            <span class="mono-tag">st.cache_data</span> so the same phrase is never translated twice
+            in a session.</p>
+
+            <h4>Step 2: Google Fact Check API Query</h4>
+            <p>The translated claim is sent to the Google Fact Check Tools API which searches its
+            full index of reviewed claims. The API returns matching claims together with the publisher
+            that reviewed them, their verdict, and a URL to the full fact-check article.</p>
+
+            <h4>Step 3: Semantic Similarity Scoring</h4>
+            <p>Raw API results may include loosely related claims. TruthScope re-ranks them using
+            <span class="mono-tag">sentence-transformers</span>
+            (<span class="mono-tag">all-MiniLM-L6-v2</span>), which encodes both your query and
+            each returned claim into semantic vectors and computes cosine similarity. Results are
+            sorted highest to lowest so the most relevant match always appears first.</p>
+
+            <h4>Step 4: Nemotron AI Reasoning</h4>
+            <p>All scored results are passed to NVIDIA Nemotron 3 Nano 30B A3B via the OpenRouter
+            API with chain-of-thought reasoning enabled. The first turn produces a full contextual
+            analysis of the evidence. The model's reasoning trace is then preserved and passed into
+            a second turn that asks it to confirm and distil its conclusion into a single definitive
+            verdict sentence. This two-step approach produces more reliable and calibrated outputs
+            than a single prompt.</p>
+
+            <h4>Step 5: Rating Interpretation</h4>
+            <p>Database ratings are colour-coded:
+            <span class="mono-tag" style="background:#d5f5e3;color:#27ae60;">True</span>
+            <span class="mono-tag" style="background:#fde8e8;color:#c0392b;">False</span>
+            <span class="mono-tag" style="background:#fef3d0;color:#7d5632;">Misleading</span>
+            <span class="mono-tag" style="background:#d4f1ee;color:#2a9d8f;">Unrated</span>
+            </p>
+
+            <h4>Step 6: Export</h4>
+            <p>Each individual fact check, including the AI analysis and verdict, can be saved as a
+            styled PDF using the Save as PDF button. The Download session report button in the history
+            panel exports every claim checked during your current session into a single branded document.</p>
+
+            <h4>Limitations</h4>
+            <p>TruthScope can only verify claims already reviewed by a professional fact-checking
+            organisation and indexed by Google. Newly circulating claims, highly localised news, or
+            niche topics may not appear. A no records found response does not mean a claim is true.
+            The AI analysis is a reasoning aid and not a substitute for primary source verification.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Final CTA
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         if st.button(T("Begin Verifying Now", lang), use_container_width=True,
@@ -651,21 +882,23 @@ def landing(lang):
 # ══════════════════════════════════════════════════════════════════════════════
 def app_page(lang):
 
-    # ── Navbar ───────────────────────────────────────────
-    c_back, c_logo, c_sp, c_lbl, c_sel = st.columns([1.1, 3, 2.5, 0.85, 1.35])
+    # Navbar: back left | logo CENTERED | language right
+    c_back, c_logo, c_lbl, c_sel = st.columns([1, 4, 0.85, 1.35])
 
     with c_back:
         st.markdown("<div style='padding-top:6px;'></div>", unsafe_allow_html=True)
-        if st.button("← Home", key="back_btn"):
+        if st.button("Home", key="back_btn"):
             st.session_state.page = "landing"
             st.session_state.results = None
+            st.session_state.llm_analysis = None
             st.rerun()
 
     with c_logo:
+        # Centered with flexbox — no relative positioning tricks needed
         st.markdown("""
-        <div style='text-align:center;padding:4px 0 0;'>
-            <div class='nav-logo'>Fact<span>Scope</span></div>
-            <div class='nav-tagline'>Global fact-checking at your fingertips</div>
+        <div style='display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 0 0;'>
+            <div class='nav-logo' style='padding-top:0;'>Truth<span>Scope</span></div>
+            <div class='nav-tagline'>AI-powered fact verification</div>
         </div>""", unsafe_allow_html=True)
 
     with c_lbl:
@@ -681,14 +914,19 @@ def app_page(lang):
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-    # ── API Key ──────────────────────────────────────────
+    # API Keys
     try:
         API_KEY = st.secrets["GOOGLE_FACT_CHECK_API_KEY"]
     except KeyError:
-        st.error("API key not found. Set GOOGLE_FACT_CHECK_API_KEY in Streamlit secrets.")
+        st.error("Google Fact Check API key not found. Set GOOGLE_FACT_CHECK_API_KEY in secrets.toml.")
         st.stop()
 
-    # ── Layout ───────────────────────────────────────────
+    try:
+        LLM_KEY = st.secrets["LLM_API"]
+    except KeyError:
+        LLM_KEY = None
+
+    # Layout
     col_main, col_hist = st.columns([3, 1], gap="large")
 
     with col_main:
@@ -703,7 +941,7 @@ def app_page(lang):
             user_input = st.text_area(
                 label="claim",
                 height=105,
-                placeholder=T("Paste a claim, headline, or news excerpt — e.g. 'Vaccines cause autism'", lang),
+                placeholder=T("Paste a claim, headline, or news excerpt, e.g. Vaccines cause autism", lang),
                 label_visibility="collapsed",
                 key="textarea_input"
             )
@@ -715,6 +953,7 @@ def app_page(lang):
 
         if clear:
             st.session_state.results = None
+            st.session_state.llm_analysis = None
             st.session_state.last_query = ""
             st.rerun()
 
@@ -724,26 +963,39 @@ def app_page(lang):
                 st.warning(T("Please enter some text before submitting.", lang))
             else:
                 st.session_state.last_query = q
-                # Translate to English only if needed — cached so instant on repeats
                 en_q = T(q, "en") if lang != "en" else q
 
+                # Step 1: Fact-check database
                 with st.spinner(T("Searching fact-check databases...", lang)):
                     raw = fact_check(en_q, API_KEY)
 
                 if raw == "no_results":
-                    st.session_state.results = []
-                    st.session_state.history.append({
-                        "query": q, "results": [], "timestamp": datetime.now().strftime("%H:%M")
-                    })
+                    scored = []
                 elif isinstance(raw, str) and raw.startswith("error:"):
-                    st.session_state.results = None
                     st.error(T(f"Service unavailable: {raw[6:]}", lang))
+                    scored = None
                 else:
                     scored = add_scores(raw, en_q)
-                    st.session_state.results = scored
-                    st.session_state.history.append({
-                        "query": q, "results": scored, "timestamp": datetime.now().strftime("%H:%M")
-                    })
+
+                st.session_state.results = scored if scored is not None else []
+
+                # Step 2: LLM analysis
+                analysis_text = None
+                verdict_text  = None
+                if LLM_KEY and scored is not None:
+                    with st.spinner(T("Nemotron is reasoning over the evidence...", lang)):
+                        analysis_text, verdict_text = call_llm(q, scored or [], LLM_KEY)
+
+                st.session_state.llm_analysis = (analysis_text, verdict_text)
+
+                # Save to history
+                st.session_state.history.append({
+                    "query":        q,
+                    "results":      scored or [],
+                    "llm_analysis": analysis_text,
+                    "llm_verdict":  verdict_text,
+                    "timestamp":    datetime.now().strftime("%H:%M"),
+                })
 
     with col_hist:
         st.markdown(
@@ -754,12 +1006,12 @@ def app_page(lang):
             if st.button(T("Clear history", lang), use_container_width=True, key="clear_hist"):
                 st.session_state.history = []
                 st.session_state.results = None
+                st.session_state.llm_analysis = None
                 st.rerun()
 
-            # Session PDF download
             sess_pdf = build_session_pdf(st.session_state.history)
-            fname_s  = f"FactScope_session_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
-            pdf_dl_button("Download session report", sess_pdf, fname_s)
+            fname_s  = f"TruthScope_session_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+            pdf_dl_button(T("Download session report", lang), sess_pdf, fname_s)
             st.markdown("<div style='margin-bottom:9px;'></div>", unsafe_allow_html=True)
 
             for item in reversed(st.session_state.history[-6:]):
@@ -777,18 +1029,22 @@ def app_page(lang):
         else:
             st.markdown(f"<p class='t-caption'>{T('No recent checks yet', lang)}</p>", unsafe_allow_html=True)
 
-    # ── Results ──────────────────────────────────────────
+    # Results section
     if st.session_state.results is not None:
-        results = st.session_state.results
+        results      = st.session_state.results
+        llm_pair     = st.session_state.llm_analysis  # (analysis, verdict) or None
+        analysis_txt = llm_pair[0] if llm_pair else None
+        verdict_txt  = llm_pair[1] if llm_pair else None
+
         st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-        if len(results) == 0:
+        if len(results) == 0 and not analysis_txt:
             st.markdown(f"""
             <div class="no-res-card">
                 <div class="no-res-title">{T('No verified records found', lang)}</div>
                 <div class="no-res-body">
                     {T('This claim has not yet been reviewed by a professional fact-checking organisation in our database. '
-                       'That does not mean the claim is true — it may be too recent, too localised, or not yet examined. '
+                       'That does not mean the claim is true — it may be too recent, too localised, or simply not yet examined. '
                        'Try rephrasing with different keywords, or search a trusted source directly.', lang)}
                 </div>
             </div>
@@ -799,27 +1055,43 @@ def app_page(lang):
             with cc: st.link_button("AFP Fact Check",    "https://factcheck.afp.com/")
 
         else:
-            st.markdown(
-                f"<p class='section-label'>{T('Results', lang)} — "
-                f"{len(results)} {T('record(s) found', lang)}</p>",
-                unsafe_allow_html=True
-            )
+            # LLM analysis card (shown above the database results)
+            if analysis_txt or verdict_txt:
+                verdict_display  = T(verdict_txt,  lang) if verdict_txt  else ""
+                analysis_display = T(analysis_txt, lang) if analysis_txt else ""
+                st.markdown(f"""
+                <div class="llm-analysis-card">
+                    <div class="llm-analysis-header">
+                        <span class="llm-analysis-badge">{T('AI Analysis', lang)}</span>
+                        <span class="llm-analysis-model">Nemotron 3 Nano 30B A3B</span>
+                    </div>
+                    {"<div class='llm-analysis-body' style='font-weight:600;font-size:.95rem;margin-bottom:10px;color:white;'>" + verdict_display + "</div>" if verdict_display else ""}
+                    {"<div class='llm-analysis-body'>" + analysis_display + "</div>" if analysis_display else ""}
+                </div>
+                """, unsafe_allow_html=True)
 
-            # Save current check as PDF
+            if results:
+                st.markdown(
+                    f"<p class='section-label' style='margin-top:16px;'>{T('Database Results', lang)} "
+                    f"— {len(results)} {T('record(s) found', lang)}</p>",
+                    unsafe_allow_html=True
+                )
+
+            # Export button
             q_now = st.session_state.last_query
             if q_now:
-                pdf_bytes = build_single_pdf(q_now, results)
-                fname_c   = f"FactScope_{q_now[:28].replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-                pdf_dl_button("Save as PDF", pdf_bytes, fname_c)
-                st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
+                pdf_bytes = build_single_pdf(q_now, results, analysis_txt, verdict_txt)
+                fname_c   = f"TruthScope_{q_now[:28].replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                pdf_dl_button(T("Save as PDF", lang), pdf_bytes, fname_c)
+                st.markdown("<div style='margin-bottom:14px;'></div>", unsafe_allow_html=True)
 
             for idx, res in enumerate(results):
                 pc  = rating_pill(res['rating'])
                 bc  = sim_color(res['similarity_score'])
-                cl  = T(res['claim'],        lang)
-                ca_ = T(res['made_by'],       lang)
-                ch  = T(res['fact_checker'],  lang)
-                rt  = T(res['rating'],        lang)
+                cl  = T(res['claim'],       lang)
+                ca_ = T(res['made_by'],     lang)
+                ch  = T(res['fact_checker'],lang)
+                rt  = T(res['rating'],      lang)
 
                 st.markdown(f"""
                 <div class="result-card" style="animation-delay:{idx*.07}s">
