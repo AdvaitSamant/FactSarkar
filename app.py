@@ -35,7 +35,6 @@ for k, v in {
     'last_query':     "",
     'page':           "landing",
     'language':       "en",
-    'show_deep_dive': False,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -100,11 +99,10 @@ html,body,[data-testid="stAppViewContainer"]{
 [data-testid="stSidebar"]{background:var(--b100)!important;}
 
 /* ── NAVBAR ROW  ── */
-/* All navbar elements share the same row height via flex alignment */
 .nav-cell{
   display:flex;
   align-items:center;
-  height:52px;           /* fixed row height — every cell matches */
+  height:52px;
 }
 .nav-cell-center{ justify-content:center; }
 .nav-cell-right { justify-content:flex-end; gap:8px; }
@@ -125,7 +123,6 @@ html,body,[data-testid="stAppViewContainer"]{
   white-space:nowrap;line-height:1;
 }
 
-/* Make the selectbox fill its column and align vertically */
 [data-testid="stSelectbox"]{margin-top:0!important;}
 [data-testid="stSelectbox"] label{display:none!important;}
 [data-testid="stSelectbox"]>div>div{
@@ -255,18 +252,26 @@ html,body,[data-testid="stAppViewContainer"]{
 .step-num{font-family:'Playfair Display',serif;font-size:1.7rem;font-weight:800;color:var(--b300);line-height:1;margin-bottom:5px;}
 .step-text{font-size:.75rem;color:var(--ts);line-height:1.4;}
 
-/* ── DEEP DIVE PANEL ── */
-.deep-panel{
-  background:var(--card);border:1px solid var(--border);
-  border-radius:13px;padding:26px 28px;margin:10px 0 18px;
+/* ── GUIDE PANEL ── */
+.guide-panel{
+  background:var(--card);border:2px solid var(--b300);
+  border-radius:13px;padding:32px 36px;margin:24px 0;
 }
-.deep-panel h4{
+.guide-panel h4{
   font-family:'Playfair Display',serif;
-  font-size:1rem;font-weight:700;color:var(--b700);
-  margin-bottom:5px;margin-top:16px;
+  font-size:1.15rem;font-weight:700;color:var(--b700);
+  margin-bottom:10px;margin-top:24px;
 }
-.deep-panel h4:first-child{margin-top:0;}
-.deep-panel p{font-size:.86rem;color:var(--ts);line-height:1.65;margin-bottom:3px;}
+.guide-panel h4:first-child{margin-top:0;}
+.guide-panel p{font-size:.94rem;color:var(--ts);line-height:1.75;margin-bottom:10px;}
+.guide-panel ul{margin:10px 0 10px 20px;color:var(--ts);}
+.guide-panel li{font-size:.92rem;line-height:1.7;margin-bottom:6px;}
+.guide-panel strong{color:var(--b700);font-weight:600;}
+.example-box{
+  background:var(--b100);border:1px solid var(--border);
+  border-radius:8px;padding:16px 20px;margin:12px 0;
+  font-size:.88rem;color:var(--ts);line-height:1.65;
+}
 .mono-tag{
   display:inline-block;background:var(--b100);color:var(--b600);
   border:1px solid var(--b200);border-radius:4px;
@@ -392,7 +397,6 @@ textarea:focus,input[type="text"]:focus{
 .pill-unrated{background:var(--teal-lt);color:var(--teal);}
 
 /* ── HISTORY PANEL ── */
-/* Sidebar controls: all same width, stacked cleanly */
 .sidebar-ctrl{width:100%;margin-bottom:8px;}
 
 .hist-item{
@@ -403,7 +407,6 @@ textarea:focus,input[type="text"]:focus{
 }
 
 /* ── PDF DOWNLOAD BUTTON ── */
-/* Rendered as a full-width anchor button to match Streamlit button sizing */
 .pdf-btn{display:block;width:100%;margin-bottom:8px;}
 .pdf-btn a{display:block;width:100%;text-decoration:none;}
 .pdf-btn a button{
@@ -424,7 +427,6 @@ textarea:focus,input[type="text"]:focus{
   transform:translateY(-1px);
 }
 
-/* Inline (results area) pdf button — auto width */
 .pdf-btn-inline{display:inline-block;margin-bottom:12px;}
 .pdf-btn-inline a{text-decoration:none;}
 .pdf-btn-inline a button{
@@ -709,32 +711,12 @@ def pdf_btn_inline(label, pdf_bytes, filename):
     )
 
 
-# ── NAVBAR HELPER ─────────────────────────────────────────────────────────────
-# Renders the right-side language control the same way on both pages.
-# `col_lbl` and `col_sel` are already-created st.columns objects.
-def render_lang_control(col_lbl, col_sel, key, lang):
-    with col_lbl:
-        # Wrap in nav-cell so it aligns to the same 52 px row
-        st.markdown("<div class='nav-cell nav-cell-right'><span class='lang-lbl'>Language</span></div>",
-                    unsafe_allow_html=True)
-    with col_sel:
-        st.markdown("<div style='padding-top:8px;'>", unsafe_allow_html=True)
-        sel = st.selectbox(
-            "Language", list(LANG_MAP.keys()),
-            index=list(LANG_MAP.values()).index(lang),
-            key=key, label_visibility="collapsed"
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        return LANG_MAP[sel]
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # LANDING PAGE
 # ══════════════════════════════════════════════════════════════════════════════
 def landing(lang):
 
-    # Navbar: logo left | spacer | LANGUAGE label | selectbox
-    # All four columns sit inside a shared 52 px tall row via .nav-cell
+    # Navbar
     c_logo, c_mid, c_lbl, c_sel = st.columns([3, 3, 1, 1.4])
 
     with c_logo:
@@ -798,7 +780,7 @@ def landing(lang):
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-    # AI Engine card — two-panel split
+    # AI Engine card
     st.markdown("<p class='section-label'>AI Analyst</p>", unsafe_allow_html=True)
     st.markdown(f"""
     <div class="ai-card">
@@ -836,16 +818,8 @@ def landing(lang):
 
     # How It Works
     st.markdown("<p class='section-label'>Process</p>", unsafe_allow_html=True)
-
-    col_title, col_btn = st.columns([3, 1])
-    with col_title:
-        st.markdown(f"<div class='t-section' style='margin-bottom:8px;'>"
-                    f"{T('How It Works', lang)}</div>", unsafe_allow_html=True)
-    with col_btn:
-        dive_label = T("Hide guide", lang) if st.session_state.show_deep_dive else T("In-depth guide", lang)
-        if st.button(dive_label, key="deep_btn"):
-            st.session_state.show_deep_dive = not st.session_state.show_deep_dive
-            st.rerun()
+    st.markdown(f"<div class='t-section' style='margin-bottom:8px;'>"
+                f"{T('How It Works', lang)}</div>", unsafe_allow_html=True)
 
     steps = [
         ("01", T("Paste a claim or headline", lang)),
@@ -861,63 +835,6 @@ def landing(lang):
         "</div>", unsafe_allow_html=True
     )
 
-    if st.session_state.show_deep_dive:
-        st.markdown(f"""
-        <div class="deep-panel">
-            <h4>What is TruthScope?</h4>
-            <p>TruthScope is an AI-assisted fact-verification tool that cross-references user-submitted
-            claims against the <strong>Google Fact Check Tools API</strong>, a curated index of
-            fact-check articles published by professional organisations worldwide: PolitiFact, Snopes,
-            AFP Fact Check, BBC Reality Check, Vishvas News, and hundreds more. All results are then
-            processed by {AI_NAME}, TruthScope's AI analyst, who synthesises a final verdict.</p>
-
-            <h4>Step 1: Input and Translation</h4>
-            <p>You type a claim, headline, or any piece of text. For non-English languages, TruthScope
-            uses <span class="mono-tag">deep-translator</span> backed by Google Translate to convert
-            your input to English before querying the database, then translates all results back into
-            your chosen language. Translations are cached with <span class="mono-tag">st.cache_data</span>
-            so the same phrase is never translated twice in a session.</p>
-
-            <h4>Step 2: Google Fact Check API Query</h4>
-            <p>The translated claim is sent to the Google Fact Check Tools API which searches its
-            full index of reviewed claims. The API returns matching claims together with the publisher
-            that reviewed them, their verdict, and a URL to the full fact-check article.</p>
-
-            <h4>Step 3: Semantic Similarity Scoring</h4>
-            <p>Raw API results may include loosely related claims. TruthScope re-ranks them using
-            <span class="mono-tag">sentence-transformers</span>
-            (<span class="mono-tag">all-MiniLM-L6-v2</span>), which encodes both your query and each
-            returned claim into semantic vectors and computes cosine similarity. Results are sorted
-            highest to lowest so the most relevant match always appears first.</p>
-
-            <h4>Step 4: {AI_NAME} AI Reasoning</h4>
-            <p>All scored results are passed to {AI_NAME} (OpenAI GPT-OSS-120B via OpenRouter).
-            The first turn produces a full contextual analysis of the evidence.
-            {AI_NAME}'s reasoning trace is then preserved and passed into a second turn that asks
-            her to confirm and distil her conclusion into a single definitive verdict sentence.
-            This two-step approach produces more reliable and calibrated outputs than a single prompt.</p>
-
-            <h4>Step 5: Rating Interpretation</h4>
-            <p>Database ratings are colour-coded:
-            <span class="mono-tag" style="background:#d5f5e3;color:#27ae60;">True</span>
-            <span class="mono-tag" style="background:#fde8e8;color:#c0392b;">False</span>
-            <span class="mono-tag" style="background:#fef3d0;color:#7d5632;">Misleading</span>
-            <span class="mono-tag" style="background:#d4f1ee;color:#2a9d8f;">Unrated</span>
-            </p>
-
-            <h4>Step 6: Export</h4>
-            <p>Each individual fact check, including {AI_NAME}'s analysis and verdict, can be saved
-            as a styled PDF using Save as PDF. The Download session report button in the history panel
-            exports every claim checked during your current session into a single branded document.</p>
-
-            <h4>Limitations</h4>
-            <p>TruthScope can only verify claims already reviewed by a professional fact-checking
-            organisation and indexed by Google. Newly circulating claims, highly localised news, or
-            niche topics may not appear. A no records found response does not mean a claim is true.
-            {AI_NAME}'s analysis is a reasoning aid and not a substitute for primary source verification.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         if st.button(T("Begin Verifying Now", lang), use_container_width=True,
@@ -930,8 +847,7 @@ def landing(lang):
 # ══════════════════════════════════════════════════════════════════════════════
 def app_page(lang):
 
-    # Navbar: [Home btn] | [logo centered] | [Language label] | [selectbox]
-    # Equal left/right weights so logo is truly centred
+    # Navbar
     c_back, c_logo, c_lbl, c_sel = st.columns([1.2, 5, 1, 1.4])
 
     with c_back:
@@ -1046,7 +962,7 @@ def app_page(lang):
                     "timestamp":    datetime.now().strftime("%H:%M"),
                 })
 
-    # History sidebar — all controls are full-width and vertically aligned
+    # History sidebar
     with col_hist:
         st.markdown(
             f"<p class='section-label' style='margin-top:2px;'>"
@@ -1054,7 +970,6 @@ def app_page(lang):
             unsafe_allow_html=True
         )
         if st.session_state.history:
-            # Clear history button — full width matches pdf button
             if st.button(T("Clear history", lang),
                          use_container_width=True, key="clear_hist"):
                 st.session_state.history = []
@@ -1062,7 +977,6 @@ def app_page(lang):
                 st.session_state.llm_analysis = None
                 st.rerun()
 
-            # Session PDF — full-width styled button identical height to above
             sess_pdf = build_session_pdf(st.session_state.history)
             fname_s  = f"TruthScope_session_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
             pdf_btn_sidebar(T("Download session report", lang), sess_pdf, fname_s)
@@ -1176,6 +1090,146 @@ def app_page(lang):
                     st.link_button(T("Full Report", lang), res['source_link'])
 
                 st.markdown("<div style='margin-bottom:3px;'></div>", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # UNDERSTANDING YOUR RESULTS - Educational Section
+    # ══════════════════════════════════════════════════════════════════════════
+    
+    st.markdown("<div class='divider' style='margin:48px 0 32px 0;'></div>", unsafe_allow_html=True)
+    
+    st.markdown(f"""
+    <div class="guide-panel">
+        <div style="text-align:center;margin-bottom:28px;">
+            <p class='section-label'>User Guide</p>
+            <div class='t-section' style='font-size:2rem;margin-bottom:8px;'>
+                {T('Understanding Your Results', lang)}
+            </div>
+            <p style='font-size:.95rem;color:var(--tm);max-width:680px;margin:0 auto;'>
+                {T('A complete guide to reading and interpreting your fact-check results', lang)}
+            </p>
+        </div>
+
+    <h4>{T('What is TruthScope?', lang)}</h4>
+    <p>{T('TruthScope is an AI-assisted fact-verification platform that helps you verify claims by searching global fact-checking databases. When you submit a claim, we search the', lang)} <strong>{T('Google Fact Check Tools API', lang)}</strong>, {T('which contains verified fact-checks from professional organizations worldwide including PolitiFact, Snopes, AFP Fact Check, BBC Reality Check, Vishvas News, and hundreds more.', lang)}</p>
+
+    <p>{T('After finding matches, our AI analyst Vera reviews all the evidence and provides you with a comprehensive assessment in plain language.', lang)}</p>
+
+    <h4>{T('Understanding the Results Card', lang)}</h4>
+    <p>{T('Each result card contains several key pieces of information. Let me explain what each element means:', lang)}</p>
+
+    <div class="example-box">
+        <strong>{T('Match Confidence Badge', lang)}</strong> — {T('This colored badge at the top shows how closely the database result matches your query, ranging from 0% to 100%.', lang)}
+        <ul style="margin-top:8px;">
+            <li><span class="mono-tag" style="background:#d5f5e3;color:#27ae60;">{T('75-100% (Green)', lang)}</span> — {T('Exact or near-exact match to your claim', lang)}</li>
+            <li><span class="mono-tag" style="background:#fef3d0;color:#7d5632;">{T('50-75% (Orange)', lang)}</span> — {T('Related claim on similar topic', lang)}</li>
+            <li><span class="mono-tag" style="background:#fde8e8;color:#c0392b;">{T('0-50% (Red)', lang)}</span> — {T('Loose connection or different claim', lang)}</li>
+        </ul>
+    </div>
+
+    <div class="example-box">
+        <strong>{T('The Claim Text', lang)}</strong> — {T('This is the exact statement that was fact-checked by professional organizations. It may be worded differently from your query, but the AI has determined it to be semantically similar.', lang)}
+    </div>
+
+    <div class="example-box">
+        <strong>{T('Claimant', lang)}</strong> — {T('The person, organization, or source that originally made this claim. This helps you understand the origin of the statement. If the claimant is "Unknown", it means the fact-checking organization did not identify or report who made the original claim.', lang)}
+    </div>
+
+    <div class="example-box">
+        <strong>{T('Verified By', lang)}</strong> — {T('The professional fact-checking organization that reviewed this claim. These are credentialed journalism organizations that specialize in fact-checking. Examples include PolitiFact, Snopes, AFP Fact Check, and many others.', lang)}
+    </div>
+
+    <div class="example-box">
+        <strong>{T('Rating', lang)}</strong> — {T('The official verdict from the fact-checking organization. Ratings are color-coded for easy reading:', lang)}
+        <ul style="margin-top:8px;">
+            <li><span class="pill pill-true">{T('TRUE', lang)}</span> — {T('The claim is accurate and confirmed by evidence', lang)}</li>
+            <li><span class="pill pill-false">{T('FALSE', lang)}</span> — {T('The claim is inaccurate and has been debunked', lang)}</li>
+            <li><span class="pill pill-mixed">{T('MIXED / MISLEADING', lang)}</span> — {T('The claim contains some truth but is partially false, misleading, or lacks important context', lang)}</li>
+            <li><span class="pill pill-unrated">{T('UNRATED', lang)}</span> — {T('The claim was reviewed but no definitive rating was assigned', lang)}</li>
+        </ul>
+    </div>
+
+    <h4>{T("Understanding Vera's Analysis", lang)}</h4>
+    <p>{T("Vera is TruthScope's AI analyst powered by OpenAI GPT-OSS-120B. When you submit a claim, Vera:", lang)}</p>
+    <ul>
+        <li>{T('Reads every database result that matches your query', lang)}</li>
+        <li>{T('Considers the credibility of each fact-checking source', lang)}</li>
+        <li>{T('Analyzes the match confidence scores', lang)}</li>
+        <li>{T('Synthesizes all evidence into a clear assessment', lang)}</li>
+        <li>{T('Provides both a detailed analysis and a concise verdict', lang)}</li>
+    </ul>
+
+    <p>{T('Vera uses a two-turn reasoning process: First, she produces a comprehensive contextual analysis. Then, she distills this analysis into a single clear verdict sentence. This approach ensures both depth and clarity.', lang)}</p>
+
+    <h4>{T('What Do The Different Results Mean?', lang)}</h4>
+
+    <p><strong>{T('When you see multiple results:', lang)}</strong> {T('The results are ranked by match confidence (highest first). A claim with 95% match confidence is more relevant to your query than one with 65% confidence. Focus on the top results first, but review all results to get the complete picture.', lang)}</p>
+
+    <p><strong>{T('When you see "No verified records found":', lang)}</strong> {T('This does NOT mean your claim is true. It means that no professional fact-checking organization has yet reviewed this specific claim in a way that matches our database. The claim might be:', lang)}</p>
+    <ul>
+        <li>{T('Too recent (just emerged and not yet fact-checked)', lang)}</li>
+        <li>{T('Too localized (specific to a small region)', lang)}</li>
+        <li>{T('Too niche (not widely circulated)', lang)}</li>
+        <li>{T('Phrased differently (try rephrasing your search)', lang)}</li>
+    </ul>
+
+    <h4>{T("How To Use The Full Report Button", lang)}</h4>
+    <p>{T('''Each result includes a "Full Report" button that links directly to the complete fact-check article on the fact-checker's website. Click this to:''', lang)}</p>
+    <ul>
+        <li>{T("Read the detailed evidence and reasoning", lang)}</li>
+        <li>{T("See all sources and citations", lang)}</li>
+        <li>{T("Understand the full context", lang)}</li>
+        <li>{T("View any images, videos, or additional media", lang)}</li>
+    </ul>
+
+    <h4>{T("How The Technology Works", lang)}</h4>
+
+    <p><strong>{T("Step 1: Translation", lang)}</strong> — {T("If you submit a claim in a language other than English, we automatically translate it to English before searching the database. Results are then translated back to your selected language.", lang)}</p>
+
+    <p><strong>{T("Step 2: Database Search", lang)}</strong> — {T("Your translated claim is sent to the Google Fact Check Tools API, which returns all professionally verified claims that match your query.", lang)}</p>
+
+    <p><strong>{T("Step 3: AI Matching", lang)}</strong> — {T("We use sentence transformers (all-MiniLM-L6-v2 model) to calculate semantic similarity. This AI encodes your query and each database result into mathematical vectors, then measures how similar they are. This ensures you get the most relevant matches, even if the wording is different.", lang)}</p>
+
+    <p><strong>{T("Step 4: Vera's Analysis", lang)}</strong> — {T("All results are passed to Vera, who reads the evidence, weighs source credibility, and produces both a detailed analysis and a final verdict.", lang)}</p>
+
+    <h4>{T("Downloading Your Results", lang)}</h4>
+    <p>{T("You can save your fact-check in two ways:", lang)}</p>
+    <ul>
+        <li><strong>{T("Save as PDF", lang)}</strong> — {T("Creates a professional PDF report of the current fact-check, including Vera's analysis and all database results", lang)}</li>
+        <li><strong>{T("Download Session Report", lang)}</strong> — {T("Exports every claim you've checked in this session into a single comprehensive PDF document", lang)}</li>
+    </ul>
+
+    <h4>{T("Important Limitations", lang)}</h4>
+    <ul>
+        <li>{T("TruthScope can only verify claims that have already been reviewed by professional fact-checkers and indexed by Google", lang)}</li>
+        <li>{T("Newly viral claims may not yet be in the database", lang)}</li>
+        <li>{T("Very localized or niche topics may not have been fact-checked", lang)}</li>
+        <li>{T("Vera's analysis is an AI reasoning aid, not a substitute for reading the original fact-check reports", lang)}</li>
+        <li>{T("Always click through to read the full fact-check article for complete context", lang)}</li>
+    </ul>
+
+    <h4>{T("Tips For Best Results", lang)}</h4>
+    <ul>
+        <li>{T("Keep your claim clear and concise", lang)}</li>
+        <li>{T("Use specific keywords rather than vague descriptions", lang)}</li>
+        <li>{T("If you get no results, try rephrasing or simplifying your claim", lang)}</li>
+        <li>{T("Review multiple results when available to get the full picture", lang)}</li>
+        <li>{T("Always read the full fact-check report for complete details", lang)}</li>
+        <li>{T("Check the date of the fact-check — older reports may not reflect new developments", lang)}</li>
+    </ul>
+
+    <h4>{T("Supported Languages", lang)}</h4>
+    <p>{T("TruthScope supports 8 languages: English, Hindi, Marathi, French, German, Spanish, Chinese (Simplified), and Japanese. Both your input and all results are automatically translated to your selected language.", lang)}</p>
+
+    <h4>{T("Privacy & Data", lang)}</h4>
+    <p>{T('''Your searches are not permanently stored. Session history is kept only during your current session and is cleared when you close the browser or click "Clear history". We use Google Fact Check API and Google Translate services, which operate under Google's privacy policies.''', lang)}</p>
+
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--border);text-align:center;">
+        <p style="font-size:.85rem;color:var(--tm);font-style:italic;">
+            {T("TruthScope is a tool to help you verify information. Always use critical thinking, consult multiple sources, and read complete fact-check articles before drawing conclusions.", lang)}
+        </p>
+    </div>
+    </div>
+        """, unsafe_allow_html=True)
 
 
 # ── ROUTER ────────────────────────────────────────────────────────────────────
